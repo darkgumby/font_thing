@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Preview — {{ run_id }}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
+  .actions { margin-bottom: 1rem; }
+  .actions a { margin-right: 1rem; }
+  .viewers { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .viewer-panel { flex: 1; min-width: 320px; }
+  .viewer-panel h2 { font-size: 1rem; margin: 0 0 0.4rem; }
+  canvas { display: block; width: 100%; height: 480px; background: #20242c; border-radius: 8px; }
+  .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 0.3rem; }
+</style>
+</head>
+<body>
+<h1>Preview</h1>
+<div class="actions">
+  <a href="/">&larr; Back to form</a>
+  <a href="{{ outer_url }}" download>Download {{ outer }}</a>
+  <a href="{{ inner_url }}" download>Download {{ inner }}</a>
+</div>
+
+<div class="viewers">
+  <div class="viewer-panel">
+    <h2>{{ outer }}</h2>
+    <div id="outer-canvas"></div>
+    <div class="hint">Drag to orbit, scroll to zoom</div>
+  </div>
+  <div class="viewer-panel">
+    <h2>{{ inner }}</h2>
+    <div id="inner-canvas"></div>
+    <div class="hint">Drag to orbit, scroll to zoom</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+function makeViewer(containerId, stlUrl) {
+  const container = document.getElementById(containerId);
+  const width = container.clientWidth || 480;
+  const height = 480;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x20242c);
+
+  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(1, 1, 1);
+  scene.add(dirLight);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+  dirLight2.position.set(-1, -0.5, -1);
+  scene.add(dirLight2);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  const loader = new STLLoader();
+  loader.load(stlUrl, (geometry) => {
+    geometry.computeVertexNormals();
+    geometry.center();
+
+    const material = new THREE.MeshStandardMaterial({ color: 0x9fb3d9, metalness: 0.1, roughness: 0.7 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2; // Z-up (STL/print convention) -> Y-up (three.js)
+    scene.add(mesh);
+
+    geometry.computeBoundingSphere();
+    const radius = geometry.boundingSphere.radius || 50;
+    camera.position.set(radius * 1.5, radius * 1.2, radius * 1.5);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener("resize", () => {
+    const w = container.clientWidth || width;
+    renderer.setSize(w, height);
+    camera.aspect = w / height;
+    camera.updateProjectionMatrix();
+  });
+}
+
+makeViewer("outer-canvas", "{{ outer_url }}");
+makeViewer("inner-canvas", "{{ inner_url }}");
+</script>
+</body>
+</html>

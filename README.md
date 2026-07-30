@@ -13,14 +13,20 @@ Output filenames default to the input SVG's name with `_outer`/`_inner` appended
 ## Requirements
 
 ```bash
-pip install shapely svgpathtools trimesh pyclipper
+pip install shapely svgpathtools trimesh pyclipper flask
 ```
 
-`pyclipper` provides real nonzero-fill winding-rule polygon ops, used to correctly distinguish genuine letter counters from same-winding decorative accents (naive containment-based hole detection gets this wrong on some fonts).
+`pyclipper` provides real nonzero-fill winding-rule polygon ops, used to correctly distinguish genuine letter counters from same-winding decorative accents (naive containment-based hole detection gets this wrong on some fonts). `flask` is only needed for the web UI below.
 
 ## Usage
 
-### Interactive
+### Web UI
+```bash
+python3 app.py [--host 127.0.0.1] [--port 5000]
+```
+Open the printed URL in a browser: pick an SVG from the ones in this directory, set parameters, optionally enable the spike, and generate. Renders both output STLs with an orbit-able Three.js preview (drag to rotate, scroll to zoom) and gives download links. Each generation writes to its own timestamped folder under `web_outputs/` so concurrent/previous runs don't clobber each other.
+
+### Interactive (CLI)
 ```bash
 ./export_stls.sh
 ```
