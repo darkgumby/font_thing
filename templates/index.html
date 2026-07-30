@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>font_thing — STL generator</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  fieldset { border: 1px solid #8884; border-radius: 8px; margin-bottom: 1rem; }
+  label { display: block; margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
+  input[type=number], input[type=text], select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+  .row { display: flex; gap: 1rem; }
+  .row > div { flex: 1; }
+  .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+  .checkbox-row input { width: auto; }
+  button { padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; margin-top: 1rem; }
+  .error { background: #fee; color: #900; border: 1px solid #c99; border-radius: 6px; padding: 0.6rem; margin-bottom: 1rem; }
+  #spike-options { display: none; padding-left: 1rem; border-left: 2px solid #8884; margin-top: 0.4rem; }
+</style>
+</head>
+<body>
+<h1>font_thing — generate STLs</h1>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form action="/generate" method="post">
+  <fieldset>
+    <legend>SVG</legend>
+    <label for="svg">Input SVG</label>
+    <select name="svg" id="svg" required>
+      {% for svg in svgs %}
+      <option value="{{ svg }}">{{ svg }}</option>
+      {% endfor %}
+    </select>
+  </fieldset>
+
+  <fieldset>
+    <legend>Dimensions</legend>
+    <div class="row">
+      <div>
+        <label for="thickness">Thickness (mm)</label>
+        <input type="number" step="0.1" name="thickness" id="thickness" value="2.0">
+      </div>
+      <div>
+        <label for="height">Height (mm)</label>
+        <input type="number" step="0.1" name="height" id="height" value="10.0">
+      </div>
+      <div>
+        <label for="cutout_depth">Cutout depth (mm)</label>
+        <input type="number" step="0.1" name="cutout_depth" id="cutout_depth" value="3.0">
+      </div>
+    </div>
+    <label for="fn">Round corner resolution (fn)</label>
+    <input type="number" step="1" name="fn" id="fn" value="64">
+    <div class="checkbox-row">
+      <input type="checkbox" name="flip" id="flip">
+      <label for="flip" style="margin:0;">Flip (face-down printing)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Spike</legend>
+    <div class="checkbox-row">
+      <input type="checkbox" name="spike" id="spike" onchange="document.getElementById('spike-options').style.display = this.checked ? 'block' : 'none'">
+      <label for="spike" style="margin:0;">Attach spike (uses spike.stl, or a generated default)</label>
+    </div>
+    <div id="spike-options">
+      <div class="row">
+        <div>
+          <label for="spike_length">Spike length (mm)</label>
+          <input type="number" step="1" name="spike_length" id="spike_length" value="150">
+        </div>
+        <div>
+          <label for="spike_width">Spike width (mm, blank = default)</label>
+          <input type="number" step="0.1" name="spike_width" id="spike_width" placeholder="default">
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <button type="submit">Generate</button>
+</form>
+</body>
+</html>
