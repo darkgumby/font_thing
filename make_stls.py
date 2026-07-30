@@ -93,11 +93,74 @@ def translate_to_origin(geom):
     return shapely.affinity.translate(geom, xoff=-minx, yoff=-miny)
 
 
+def extrude_clean(poly, height):
+    """Extrude a single Polygon, repairing self-touching rings that would
+    otherwise extrude into a non-manifold (non-volume) mesh."""
+    mesh = trimesh.creation.extrude_polygon(poly, height)
+    if not mesh.is_volume:
+        mesh = trimesh.creation.extrude_polygon(poly.buffer(0), height)
+    return mesh
+
+
+def group_overlapping(polys):
+    """Union-find grouping: polygons that actually overlap (not just touch)
+    land in the same group, since they need a real boolean merge rather than
+    a plain concatenate."""
+    parent = list(range(len(polys)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for i in range(len(polys)):
+        for j in range(i + 1, len(polys)):
+            inter = polys[i].intersection(polys[j])
+            if not inter.is_empty and inter.area > 1e-6:
+                union(i, j)
+
+    groups = {}
+    for i in range(len(polys)):
+        groups.setdefault(find(i), []).append(polys[i])
+    return list(groups.values())
+
+
+def extrude_group(polys, height):
+    """Extrude a set of mutually-overlapping polygons into one clean solid."""
+    if len(polys) == 1:
+        return extrude_clean(polys[0], height)
+
+    meshes = [extrude_clean(p, height) for p in polys]
+    try:
+        merged = trimesh.boolean.union(meshes)
+        if merged.is_volume:
+            return merged
+    except Exception:
+        pass
+
+    # Mesh boolean failed or left a non-volume — fall back to merging at the
+    # shapely level instead. The union's output pieces are disjoint by
+    # construction, so they can be safely concatenated.
+    unioned = shapely.make_valid(unary_union(polys))
+    if isinstance(unioned, Polygon):
+        return extrude_clean(unioned, height)
+    parts = [extrude_clean(p, height) for p in unioned.geoms]
+    return trimesh.util.concatenate(parts)
+
+
 def extrude(geom, height):
-    """Extrude shapely Polygon or MultiPolygon to trimesh solid."""
+    """Extrude shapely Polygon or MultiPolygon to trimesh solid.
+    Overlapping parts are boolean-merged; disjoint parts are concatenated."""
     if isinstance(geom, Polygon):
-        return trimesh.creation.extrude_polygon(geom, height)
-    parts = [trimesh.creation.extrude_polygon(p, height) for p in geom.geoms]
+        return extrude_clean(geom, height)
+    groups = group_overlapping(list(geom.geoms))
+    parts = [extrude_group(g, height) for g in groups]
     return trimesh.util.concatenate(parts)
 
 
@@ -146,12 +209,9 @@ def make_stls(svg_file, thickness, height, cutout_depth, fn=64, flip=False):
     print("Building outer.stl...")
     body = extrude(outer, height)
 
-    # Build pocket as one manifold solid — concatenate is not watertight for MultiPolygon
-    if isinstance(filled, Polygon):
-        pocket = trimesh.creation.extrude_polygon(filled, cutout_depth + 0.01)
-    else:
-        parts = [trimesh.creation.extrude_polygon(p, cutout_depth + 0.01) for p in filled.geoms]
-        pocket = trimesh.boolean.union(parts)
+    # Build pocket as one manifold solid — overlapping letters get boolean-merged,
+    # disjoint ones concatenated (see extrude/group_overlapping)
+    pocket = extrude(filled, cutout_depth + 0.01)
     pocket.apply_translation([0, 0, bottom_h])
 
     outer_mesh = trimesh.boolean.difference([body, pocket])
@@ -164,11 +224,7 @@ def make_stls(svg_file, thickness, height, cutout_depth, fn=64, flip=False):
 
     # inner STL: SVG shape with holes, extruded to cutout_depth
     print("Building inner.stl...")
-    if isinstance(with_holes, Polygon):
-        inner = trimesh.creation.extrude_polygon(with_holes, cutout_depth)
-    else:
-        parts = [trimesh.creation.extrude_polygon(p, cutout_depth) for p in with_holes.geoms]
-        inner = trimesh.boolean.union(parts)
+    inner = extrude(with_holes, cutout_depth)
     if flip:
         inner.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [0, 1, 0]))
         mn = inner.bounds[0]
