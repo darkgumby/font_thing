@@ -9,10 +9,10 @@
   h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
   .actions { margin-bottom: 1rem; }
   .actions a { margin-right: 1rem; }
-  .viewers { display: flex; gap: 1rem; flex-wrap: wrap; }
-  .viewer-panel { flex: 1; min-width: 320px; }
-  .viewer-panel h2 { font-size: 1rem; margin: 0 0 0.4rem; }
-  canvas { display: block; width: 100%; height: 480px; background: #20242c; border-radius: 8px; }
+  .legend { display: flex; gap: 1.2rem; margin-bottom: 0.6rem; font-size: 0.9rem; }
+  .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .swatch { width: 0.9rem; height: 0.9rem; border-radius: 3px; display: inline-block; }
+  #viewer-canvas { display: block; width: 100%; height: 640px; background: #20242c; border-radius: 8px; }
   .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 0.3rem; }
 </style>
 </head>
@@ -24,18 +24,13 @@
   <a href="{{ inner_url }}" download>Download {{ inner }}</a>
 </div>
 
-<div class="viewers">
-  <div class="viewer-panel">
-    <h2>{{ outer }}</h2>
-    <div id="outer-canvas"></div>
-    <div class="hint">Drag to orbit, scroll to zoom</div>
-  </div>
-  <div class="viewer-panel">
-    <h2>{{ inner }}</h2>
-    <div id="inner-canvas"></div>
-    <div class="hint">Drag to orbit, scroll to zoom</div>
-  </div>
+<div class="legend">
+  <span><span class="swatch" style="background:#c0392b;"></span>{{ outer }}</span>
+  <span><span class="swatch" style="background:#f2f2f2;border:1px solid #8884;"></span>{{ inner }}</span>
 </div>
+
+<div id="viewer-canvas"></div>
+<div class="hint">Drag to orbit, scroll to zoom — both pieces shown together at their real relative alignment</div>
 
 <script type="importmap">
 {
@@ -50,64 +45,86 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-function makeViewer(containerId, stlUrl) {
-  const container = document.getElementById(containerId);
-  const width = container.clientWidth || 480;
-  const height = 480;
+const container = document.getElementById("viewer-canvas");
+const width = container.clientWidth || 640;
+const height = 640;
 
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x20242c);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242c);
 
-  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(width, height);
-  container.appendChild(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(width, height);
+container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(1, 1, 1);
-  scene.add(dirLight);
-  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-  dirLight2.position.set(-1, -0.5, -1);
-  scene.add(dirLight2);
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(1, 1, 1);
+scene.add(dirLight);
+const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+dirLight2.position.set(-1, -0.5, -1);
+scene.add(dirLight2);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
 
-  const loader = new STLLoader();
-  loader.load(stlUrl, (geometry) => {
-    geometry.computeVertexNormals();
-    geometry.center();
+// group holds both meshes so the Z-up -> Y-up rotation is applied identically
+// to both, and neither mesh is individually re-centered — outer/inner share
+// one coordinate frame from make_stls.py, so keeping their raw positions is
+// exactly what makes them line up correctly here
+const group = new THREE.Group();
+group.rotation.x = -Math.PI / 2;
+scene.add(group);
 
-    const material = new THREE.MeshStandardMaterial({ color: 0x9fb3d9, metalness: 0.1, roughness: 0.7 });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2; // Z-up (STL/print convention) -> Y-up (three.js)
-    scene.add(mesh);
+const loader = new STLLoader();
+let loaded = 0;
+const combinedBounds = new THREE.Box3();
 
-    geometry.computeBoundingSphere();
-    const radius = geometry.boundingSphere.radius || 50;
-    camera.position.set(radius * 1.5, radius * 1.2, radius * 1.5);
+function onOneLoaded(geometry, color) {
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({ color, metalness: 0.1, roughness: 0.6 });
+  const mesh = new THREE.Mesh(geometry, material);
+  group.add(mesh);
+
+  geometry.computeBoundingBox();
+  combinedBounds.union(geometry.boundingBox);
+
+  loaded += 1;
+  if (loaded === 2) {
+    const center = combinedBounds.getCenter(new THREE.Vector3());
+    const size = combinedBounds.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.6 || 50;
+
+    // shift the group so the combined bounds are centered at the origin —
+    // applied once to the group, so relative alignment between the two
+    // meshes is preserved. group.position translates in world space, i.e.
+    // *after* the group's rotation, so the center vector must be rotated
+    // the same way first or the offset lands in the wrong place.
+    const rotatedCenter = center.clone().applyEuler(group.rotation);
+    group.position.set(-rotatedCenter.x, -rotatedCenter.y, -rotatedCenter.z);
+
+    camera.position.set(radius * 1.3, radius * 1.0, radius * 1.3);
     controls.target.set(0, 0, 0);
     controls.update();
-  });
-
-  function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
   }
-  animate();
-
-  window.addEventListener("resize", () => {
-    const w = container.clientWidth || width;
-    renderer.setSize(w, height);
-    camera.aspect = w / height;
-    camera.updateProjectionMatrix();
-  });
 }
 
-makeViewer("outer-canvas", "{{ outer_url }}");
-makeViewer("inner-canvas", "{{ inner_url }}");
+loader.load("{{ outer_url }}", (g) => onOneLoaded(g, 0xc0392b)); // red
+loader.load("{{ inner_url }}", (g) => onOneLoaded(g, 0xf2f2f2)); // white
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener("resize", () => {
+  const w = container.clientWidth || width;
+  renderer.setSize(w, height);
+  camera.aspect = w / height;
+  camera.updateProjectionMatrix();
+});
 </script>
 </body>
 </html>
