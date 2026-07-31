@@ -67,6 +67,7 @@
 <form action="/generate" method="post">
   <fieldset>
     <legend>SVG</legend>
+    {% if svgs %}
     <label for="svg">Input SVG</label>
     <select name="svg" id="svg" required onchange="document.getElementById('svg-preview').src = '/svgs/' + this.value">
       {% for svg in svgs %}
@@ -74,8 +75,11 @@
       {% endfor %}
     </select>
     <div id="svg-preview-wrap">
-      <img id="svg-preview" src="/svgs/{{ selected if selected in svgs else svgs[0] if svgs else '' }}" alt="SVG preview">
+      <img id="svg-preview" src="/svgs/{{ selected if selected in svgs else svgs[0] }}" alt="SVG preview">
     </div>
+    {% else %}
+    <p style="color: var(--muted); margin: 0.4rem 0 0;">No SVGs found — upload one below to get started.</p>
+    {% endif %}
   </fieldset>
 
   <fieldset>
@@ -130,7 +134,7 @@
     </div>
   </fieldset>
 
-  <button type="submit">Generate</button>
+  <button type="submit" {% if not svgs %}disabled title="Upload an SVG first"{% endif %}>Generate</button>
 </form>
 
 <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data" style="display:none;"></form>
