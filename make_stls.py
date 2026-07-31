@@ -286,6 +286,23 @@ def find_fully_embedded_x(footprint, width, min_y, embed_depth, target_x, step=0
     return None, 0.0
 
 
+def find_embeddable_spot(footprint, target_width, min_y, target_x, min_width=5.0, width_step=0.5, **kwargs):
+    """Like find_fully_embedded_x, but also shrinks the width itself (down
+    to `min_width`) when even a shallow embed doesn't fit at the requested
+    width — e.g. every stroke in the artwork is narrower than the spike.
+    Tries widest first (sturdiest) and only narrows as a last resort.
+    Returns (x, embed_depth, width) or (None, 0, None) if nothing fits even
+    at the narrowest width."""
+    width = target_width
+    while True:
+        x, depth = find_fully_embedded_x(footprint, width, min_y, width, target_x, **kwargs)
+        if x is not None:
+            return x, depth, width
+        if width <= min_width:
+            return None, 0.0, None
+        width = max(min_width, width - width_step)
+
+
 def generate_default_spike(width=5.0, length=150.0):
     """Build a simple pointed rod (blunt square end -> short pyramid tip)
     procedurally, so attaching a spike doesn't require an external mesh
@@ -313,6 +330,18 @@ def generate_default_spike(width=5.0, length=150.0):
     if not mesh.is_winding_consistent or mesh.volume < 0:
         trimesh.repair.fix_normals(mesh)
     return mesh
+
+
+def scale_axis_centered(mesh, axis, target_extent):
+    """Scale `mesh` along one coordinate axis (0=X, 1=Y, 2=Z) to
+    `target_extent`, anchored at that axis's own center — the other two
+    axes are untouched. No-op if the axis has zero extent."""
+    lo, hi = mesh.bounds[0][axis], mesh.bounds[1][axis]
+    extent = hi - lo
+    if extent > 0:
+        center = (lo + hi) / 2
+        scale = target_extent / extent
+        mesh.vertices[:, axis] = (mesh.vertices[:, axis] - center) * scale + center
 
 
 def attach_spike(mesh, spike_path, footprint, pocket_footprint=None, spike_length=150.0, height=None,
@@ -365,44 +394,42 @@ def attach_spike(mesh, spike_path, footprint, pocket_footprint=None, spike_lengt
     # scale Z to span the full piece height, anchored at Z-center so the
     # cross-section stays symmetric (doesn't shift the attach math below)
     if height is not None:
-        z_min, z_max = oriented.bounds[0][2], oriented.bounds[1][2]
-        z_extent = z_max - z_min
-        if z_extent > 0:
-            z_center = (z_min + z_max) / 2
-            z_scale = height / z_extent
-            oriented.vertices[:, 2] = (oriented.vertices[:, 2] - z_center) * z_scale + z_center
+        scale_axis_centered(oriented, 2, height)
 
-    # scale width (X) to spike_width if given, anchored at X-center — no-op
-    # for a freshly-generated default spike, which is already built at this
-    # exact width
-    if spike_width is not None:
-        x_min, x_max = oriented.bounds[0][0], oriented.bounds[1][0]
-        x_extent = x_max - x_min
-        if x_extent > 0:
-            x_center = (x_min + x_max) / 2
-            x_scale = spike_width / x_extent
-            oriented.vertices[:, 0] = (oriented.vertices[:, 0] - x_center) * x_scale + x_center
+    # width (X): if spike_width was given, that's the requested width;
+    # otherwise use the mesh's own natural width. Actual scaling is deferred
+    # until after the embed search below, since it may shrink the width
+    # further to fit — no point scaling twice.
+    requested_width = spike_width if spike_width is not None else (oriented.bounds[1][0] - oriented.bounds[0][0])
 
-    spike_width = oriented.bounds[1][0] - oriented.bounds[0][0]
-    max_embed_depth = spike_width
     min_y = mesh.bounds[0][1]
     overall_center_x = (mesh.bounds[0][0] + mesh.bounds[1][0]) / 2
 
     # safe_footprint excludes the pocket area entirely — no fallback is allowed
     # to search outside it, since that's exactly what would expose the spike
-    # inside the pocket cavity. If nothing fits here, fail loudly instead.
+    # inside the pocket cavity. If nothing fits even at the narrowest width,
+    # fail loudly instead.
+    min_spike_width = 5.0
     safe_footprint = footprint if pocket_footprint is None else shapely.make_valid(footprint.difference(pocket_footprint))
-    center_x, embed_depth = find_fully_embedded_x(safe_footprint, spike_width, min_y, max_embed_depth, overall_center_x)
+    center_x, embed_depth, final_width = find_embeddable_spot(
+        safe_footprint, requested_width, min_y, overall_center_x, min_width=min_spike_width)
     if center_x is None:
         raise ValueError(
             "Can't attach spike: no location along the bottom edge has enough solid "
-            "border material (outside the pocket) to fit the spike's full width "
-            f"({spike_width:.2f}mm) without exposing it inside the pocket. Increase "
-            "--thickness (the outline border width), or use a thinner spike."
+            "border material (outside the pocket) to fit even the narrowest spike "
+            f"({min_spike_width:.0f}mm) without exposing it inside the pocket. Increase "
+            "--thickness (the outline border width), or disable the spike for this artwork."
         )
-    if embed_depth < max_embed_depth:
-        print(f"  Note: embedding {embed_depth:.2f}mm deep (spike width is {spike_width:.2f}mm) — "
+    if final_width < requested_width:
+        print(f"  Note: narrowed spike to {final_width:.2f}mm (requested {requested_width:.2f}mm) — "
+              f"nearest safe stroke outside the pocket isn't wide enough at full width.")
+    if embed_depth < final_width:
+        print(f"  Note: embedding {embed_depth:.2f}mm deep (spike width is {final_width:.2f}mm) — "
               f"nearest safe spot outside the pocket is shallower than a full-depth embed.")
+
+    # apply the final width, anchored at X-center — no-op if it matches what
+    # the mesh (loaded or generated) already has
+    scale_axis_centered(oriented, 0, final_width)
 
     attach_y = min_y + embed_depth
     bottom_z = mesh.bounds[0][2] - oriented.bounds[0][2]
@@ -501,6 +528,15 @@ def make_stls(svg_file, thickness, height, cutout_depth, fn=64, flip=False, spik
         outer_mesh.apply_translation(-mn)
         inner.apply_translation(-mn)
 
+    # boolean ops (esp. the pocket difference) can leave zero-area degenerate
+    # faces behind — harmless in memory, but binary STL is a plain triangle
+    # soup with no shared vertex indices, and a stray degenerate face can
+    # cause the *reload* to see two components / non-watertight even though
+    # the real geometry has zero actual volume there
+    for m in (outer_mesh, inner):
+        m.update_faces(m.nondegenerate_faces())
+        m.remove_unreferenced_vertices()
+
     outer_mesh.export(outer_path)
     print(f"→ {outer_path}")
     inner.export(inner_path)
@@ -513,7 +549,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     svg_file     = sys.argv[1]
-    thickness    = float(sys.argv[2]) if len(sys.argv) > 2 else 2.0
+    thickness    = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
     height       = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
     cutout_depth = float(sys.argv[4]) if len(sys.argv) > 4 else 3.0
     fn           = int(sys.argv[5])   if len(sys.argv) > 5 else 64

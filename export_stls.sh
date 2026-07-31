@@ -9,8 +9,8 @@ else
 fi
 
 if [ -z "$2" ]; then
-    read -rp "Outline thickness mm [2.0]: " THICKNESS
-    THICKNESS="${THICKNESS:-2.0}"
+    read -rp "Outline thickness mm [5.0]: " THICKNESS
+    THICKNESS="${THICKNESS:-5.0}"
 else
     THICKNESS="$2"
 fi
