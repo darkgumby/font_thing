@@ -34,12 +34,6 @@ def list_svgs():
     return sorted(names)
 
 
-def list_uploaded_svgs():
-    """Names deletable via /delete — only ones that actually live in
-    UPLOAD_DIR, never the repo's own example SVGs."""
-    return sorted(os.path.basename(p) for p in glob.glob(os.path.join(UPLOAD_DIR, "*.svg")))
-
-
 def resolve_svg_path(name):
     """Basename-only lookup across the repo dir and uploads dir — returns
     None if `name` isn't a bare filename or doesn't exist in either."""
@@ -56,7 +50,7 @@ def resolve_svg_path(name):
 def index():
     return render_template(
         "index.html", svgs=list_svgs(), error=request.args.get("error"),
-        selected=request.args.get("selected"), uploaded=list_uploaded_svgs(),
+        selected=request.args.get("selected"),
     )
 
 
@@ -80,9 +74,10 @@ def upload():
 @app.route("/delete", methods=["POST"])
 def delete():
     name = request.form.get("svg", "")
-    if not name or os.path.basename(name) != name or name not in list_uploaded_svgs():
-        return redirect(url_for("index", error=f"Can't delete {name!r} — only uploaded files can be deleted"))
-    os.remove(os.path.join(UPLOAD_DIR, name))
+    path = resolve_svg_path(name)
+    if not path:
+        return redirect(url_for("index", error=f"Can't delete {name!r} — file not found"))
+    os.remove(path)
     return redirect(url_for("index"))
 
 
