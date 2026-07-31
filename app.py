@@ -10,6 +10,7 @@ import glob
 import os
 import time
 import traceback
+import uuid
 
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for
 from werkzeug.utils import secure_filename
@@ -21,6 +22,7 @@ OUTPUT_ROOT = os.path.join(BASE_DIR, "web_outputs")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB cap on uploads
 
 
 def svg_search_dirs():
@@ -109,7 +111,9 @@ def generate():
     except ValueError as e:
         return redirect(url_for("index", error=f"Invalid parameter: {e}"))
 
-    run_id = time.strftime("%Y%m%d-%H%M%S")
+    # uuid suffix avoids collisions between concurrent requests within the
+    # same second (threaded=True makes that a real possibility)
+    run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     run_dir = os.path.join(OUTPUT_ROOT, run_id)
     os.makedirs(run_dir, exist_ok=True)
     stem = os.path.splitext(svg_name)[0]
@@ -156,6 +160,11 @@ def files(run_id, filename):
     return send_from_directory(run_dir, filename)
 
 
+@app.errorhandler(413)
+def too_large(e):
+    return redirect(url_for("index", error="File too large (5MB limit)"))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5000)
@@ -163,4 +172,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     os.makedirs(OUTPUT_ROOT, exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    app.run(host=args.host, port=args.port, debug=False)
+    app.run(host=args.host, port=args.port, debug=False, threaded=True)
