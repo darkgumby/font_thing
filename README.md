@@ -24,7 +24,14 @@ pip install shapely svgpathtools trimesh pyclipper flask
 ```bash
 python3 app.py [--host 127.0.0.1] [--port 5000]
 ```
-Open the printed URL in a browser: pick an SVG from the ones in this directory, set parameters, optionally enable the spike, and generate. Renders both output STLs with an orbit-able Three.js preview (drag to rotate, scroll to zoom) and gives download links. Each generation writes to its own timestamped folder under `web_outputs/` so concurrent/previous runs don't clobber each other.
+Open the printed URL in a browser:
+
+- **Pick an SVG** from a dropdown listing every `.svg` in this directory (repo dir + `uploads/`), with a live preview image that updates as you change the selection.
+- **Upload a new SVG** via the upload form — saved to `uploads/`, validated as `.svg`, filename sanitized, and auto-selected afterward.
+- **Delete** the currently-selected SVG from disk (with a confirm prompt) — works for any SVG, not just uploaded ones; these files aren't git-tracked, so this only affects local working files, not version history.
+- **Light/dark theme toggle** (top right), defaulting to system preference and persisted in the browser across sessions.
+- Set generation parameters (thickness/height/cutout depth/fn/flip, spike options) and **Generate** — renders both output STLs together in one orbit-able Three.js view (drag to rotate, scroll to zoom), correctly aligned at their real relative position (outer in red, inner in white), plus download links. Each generation writes to its own timestamped folder under `web_outputs/` so concurrent/previous runs don't clobber each other.
+- If no SVGs exist yet, the dropdown/preview are replaced with an upload prompt instead of showing an unusable empty select.
 
 ### Interactive (CLI)
 ```bash
