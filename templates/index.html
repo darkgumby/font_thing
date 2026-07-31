@@ -17,6 +17,11 @@
   button { padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; margin-top: 1rem; }
   .error { background: #fee; color: #900; border: 1px solid #c99; border-radius: 6px; padding: 0.6rem; margin-bottom: 1rem; }
   #spike-options { display: none; padding-left: 1rem; border-left: 2px solid #8884; margin-top: 0.4rem; }
+  .upload-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.6rem; }
+  .upload-row input[type=file] { flex: 1; }
+  .upload-row button { margin-top: 0; padding: 0.4rem 0.8rem; }
+  #svg-preview-wrap { margin-top: 0.6rem; text-align: center; background: #8881; border-radius: 6px; padding: 0.6rem; }
+  #svg-preview { max-width: 100%; max-height: 260px; }
 </style>
 </head>
 <body>
@@ -28,11 +33,22 @@
   <fieldset>
     <legend>SVG</legend>
     <label for="svg">Input SVG</label>
-    <select name="svg" id="svg" required>
+    <select name="svg" id="svg" required onchange="document.getElementById('svg-preview').src = '/svgs/' + this.value">
       {% for svg in svgs %}
-      <option value="{{ svg }}">{{ svg }}</option>
+      <option value="{{ svg }}" {% if svg == selected %}selected{% endif %}>{{ svg }}</option>
       {% endfor %}
     </select>
+    <div id="svg-preview-wrap">
+      <img id="svg-preview" src="/svgs/{{ selected if selected in svgs else svgs[0] if svgs else '' }}" alt="SVG preview">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Upload a new SVG</legend>
+    <div class="upload-row">
+      <input type="file" name="svg_file" id="svg_file" accept=".svg" form="upload-form">
+      <button type="submit" form="upload-form">Upload</button>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -81,5 +97,7 @@
 
   <button type="submit">Generate</button>
 </form>
+
+<form id="upload-form" action="/upload" method="post" enctype="multipart/form-data" style="display:none;"></form>
 </body>
 </html>
