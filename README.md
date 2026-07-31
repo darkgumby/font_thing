@@ -13,10 +13,21 @@ Output filenames default to the input SVG's name with `_outer`/`_inner` appended
 ## Requirements
 
 ```bash
-pip install shapely svgpathtools trimesh pyclipper flask
+pip install -r requirements.txt
 ```
 
-`pyclipper` provides real nonzero-fill winding-rule polygon ops, used to correctly distinguish genuine letter counters from same-winding decorative accents (naive containment-based hole detection gets this wrong on some fonts). `flask` is only needed for the web UI below.
+`pyclipper` provides real nonzero-fill winding-rule polygon ops, used to correctly distinguish genuine letter counters from same-winding decorative accents (naive containment-based hole detection gets this wrong on some fonts). `flask`/`werkzeug` are only needed for the web UI. `manifold3d`/`rtree` back some of `trimesh`'s boolean/section operations — not obvious from the import statements, but required.
+
+## Docker
+
+```bash
+docker build -t font-thing .
+docker run -d -p 5000:5000 --restart unless-stopped font-thing
+```
+
+The image ships without any `.svg` files (those are local example/working files, not app code) or `spike.stl` — the app handles both gracefully: an empty SVG list shows an upload prompt instead of a broken dropdown, and a missing `spike.stl` falls back to a procedurally-generated default spike. Add your own SVGs via the web UI's upload feature after deploying.
+
+`uploads/` and `web_outputs/` live inside the container's writable layer — mount them as volumes (`-v` flags) if you need uploaded files or generated STLs to survive a container recreate/redeploy.
 
 ## Usage
 
