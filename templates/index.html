@@ -75,17 +75,15 @@
         <option value="{{ svg }}" {% if svg == selected %}selected{% endif %}>{{ svg }}</option>
         {% endfor %}
       </select>
-      <button type="submit" form="delete-form" id="delete-btn" style="margin-top: 0; padding: 0.4rem 0.7rem; display: none;" title="Delete this uploaded file" onclick="return confirm('Delete this uploaded SVG? This cannot be undone.')">Delete</button>
+      <button type="submit" form="delete-form" id="delete-btn" style="margin-top: 0; padding: 0.4rem 0.7rem;" title="Delete this file from disk" onclick="return confirm('Permanently delete ' + document.getElementById('svg').value + ' from disk? This cannot be undone.')">Delete</button>
     </div>
     <div id="svg-preview-wrap">
       <img id="svg-preview" src="/svgs/{{ selected if selected in svgs else svgs[0] }}" alt="SVG preview">
     </div>
     <script>
-      var uploadedSvgs = {{ uploaded | tojson }};
       function onSvgChange(name) {
         document.getElementById("svg-preview").src = "/svgs/" + name;
         document.getElementById("delete-svg-name").value = name;
-        document.getElementById("delete-btn").style.display = uploadedSvgs.includes(name) ? "inline-block" : "none";
       }
       // delete-form (and its hidden input) is defined later in the document,
       // so defer until the DOM has fully parsed rather than calling inline
