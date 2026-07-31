@@ -12,34 +12,79 @@ import time
 import traceback
 
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for
+from werkzeug.utils import secure_filename
 
 from make_stls import make_stls
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_ROOT = os.path.join(BASE_DIR, "web_outputs")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 app = Flask(__name__)
 
 
+def svg_search_dirs():
+    return [BASE_DIR, UPLOAD_DIR]
+
+
 def list_svgs():
-    return sorted(
-        os.path.basename(p) for p in glob.glob(os.path.join(BASE_DIR, "*.svg"))
-    )
+    names = set()
+    for d in svg_search_dirs():
+        names.update(os.path.basename(p) for p in glob.glob(os.path.join(d, "*.svg")))
+    return sorted(names)
+
+
+def resolve_svg_path(name):
+    """Basename-only lookup across the repo dir and uploads dir — returns
+    None if `name` isn't a bare filename or doesn't exist in either."""
+    if not name or os.path.basename(name) != name:
+        return None
+    for d in svg_search_dirs():
+        candidate = os.path.join(d, name)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", svgs=list_svgs(), error=request.args.get("error"))
+    return render_template(
+        "index.html", svgs=list_svgs(), error=request.args.get("error"),
+        selected=request.args.get("selected"),
+    )
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    file = request.files.get("svg_file")
+    if not file or not file.filename:
+        return redirect(url_for("index", error="No file selected"))
+    if not file.filename.lower().endswith(".svg"):
+        return redirect(url_for("index", error="Only .svg files can be uploaded"))
+
+    name = secure_filename(file.filename)
+    if not name:
+        return redirect(url_for("index", error="Invalid filename"))
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file.save(os.path.join(UPLOAD_DIR, name))
+    return redirect(url_for("index", selected=name))
+
+
+@app.route("/svgs/<name>")
+def svgs(name):
+    path = resolve_svg_path(name)
+    if not path:
+        return "Not found", 404
+    return send_from_directory(os.path.dirname(path), os.path.basename(path), mimetype="image/svg+xml")
 
 
 @app.route("/generate", methods=["POST"])
 def generate():
     svg_name = request.form.get("svg", "")
-    # reject path traversal / anything outside the repo dir — only a bare
-    # filename picked from list_svgs() is valid
-    if not svg_name or os.path.basename(svg_name) != svg_name or svg_name not in list_svgs():
+    svg_path = resolve_svg_path(svg_name)
+    if not svg_path:
         return redirect(url_for("index", error=f"Invalid SVG selection: {svg_name!r}"))
-    svg_path = os.path.join(BASE_DIR, svg_name)
 
     try:
         thickness = float(request.form.get("thickness", 2.0))
@@ -107,4 +152,5 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()
     os.makedirs(OUTPUT_ROOT, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     app.run(host=args.host, port=args.port, debug=False)
