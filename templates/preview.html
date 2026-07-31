@@ -3,21 +3,49 @@
 <head>
 <meta charset="utf-8">
 <title>Preview — {{ run_id }}</title>
+<script>
+  (function () {
+    var saved = localStorage.getItem("theme");
+    var theme = saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8; --fg: #16171a; --panel-bg: #ffffff; --border: #0000001f; --muted: #00000088;
+    --viewer-bg: #e4e6ea;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171c; --fg: #e8e8ea; --panel-bg: #1d2026; --border: #ffffff26; --muted: #ffffff77;
+    --viewer-bg: #20242c;
+  }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; background: var(--bg); color: var(--fg); }
   h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
+  .top-row { display: flex; justify-content: space-between; align-items: center; }
+  #theme-toggle { padding: 0.4rem 0.7rem; font-size: 1rem; background: var(--panel-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
   .actions { margin-bottom: 1rem; }
-  .actions a { margin-right: 1rem; }
+  .actions a { margin-right: 1rem; color: var(--fg); }
   .legend { display: flex; gap: 1.2rem; margin-bottom: 0.6rem; font-size: 0.9rem; }
   .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
   .swatch { width: 0.9rem; height: 0.9rem; border-radius: 3px; display: inline-block; }
-  #viewer-canvas { display: block; width: 100%; height: 640px; background: #20242c; border-radius: 8px; }
-  .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 0.3rem; }
+  #viewer-canvas { display: block; width: 100%; height: 640px; background: var(--viewer-bg); border-radius: 8px; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
 </style>
 </head>
 <body>
-<h1>Preview</h1>
+<div class="top-row">
+  <h1>Preview</h1>
+  <button id="theme-toggle" type="button" onclick="toggleTheme()" title="Toggle light/dark theme">&#9680;</button>
+</div>
+<script>
+  function toggleTheme() {
+    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+    if (window.updateViewerBackground) window.updateViewerBackground(next);
+  }
+</script>
 <div class="actions">
   <a href="/">&larr; Back to form</a>
   <a href="{{ outer_url }}" download>Download {{ outer }}</a>
@@ -49,8 +77,13 @@ const container = document.getElementById("viewer-canvas");
 const width = container.clientWidth || 640;
 const height = 640;
 
+const viewerColors = { light: 0xe4e6ea, dark: 0x20242c };
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x20242c);
+const currentTheme = document.documentElement.getAttribute("data-theme") || "light";
+scene.background = new THREE.Color(viewerColors[currentTheme]);
+window.updateViewerBackground = (theme) => {
+  scene.background = new THREE.Color(viewerColors[theme] ?? viewerColors.light);
+};
 
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
