@@ -99,7 +99,7 @@ def generate():
         return redirect(url_for("index", error=f"Invalid SVG selection: {svg_name!r}"))
 
     try:
-        thickness = float(request.form.get("thickness", 2.0))
+        thickness = float(request.form.get("thickness", 5.0))
         height = float(request.form.get("height", 10.0))
         cutout_depth = float(request.form.get("cutout_depth", 3.0))
         fn = int(request.form.get("fn", 64))
