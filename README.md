@@ -25,7 +25,9 @@ docker build -t font-thing .
 docker run -d -p 5000:5000 --restart unless-stopped font-thing
 ```
 
-The image ships without any `.svg` files (those are local example/working files, not app code) or `spike.stl` — the app handles both gracefully: an empty SVG list shows an upload prompt instead of a broken dropdown, and a missing `spike.stl` falls back to a procedurally-generated default spike. Add your own SVGs via the web UI's upload feature after deploying.
+The image ships without any `.svg` files (those are local example/working files, not app code) — an empty SVG list shows an upload prompt instead of a broken dropdown. Add your own SVGs via the web UI's upload feature after deploying.
+
+`spike.stl` (the default spike mesh) is a real app asset, tracked in git, and ships with both the repo and the Docker image. If it's ever missing (e.g. deleted locally), the app falls back to a procedurally-generated default spike.
 
 `uploads/` and `web_outputs/` live inside the container's writable layer — mount them as volumes (`-v` flags) if you need uploaded files or generated STLs to survive a container recreate/redeploy.
 

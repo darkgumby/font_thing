@@ -1,4 +1,5 @@
 *.stl
+!spike.stl
 *.svg
 web_outputs/
 __pycache__/
