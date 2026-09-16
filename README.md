@@ -70,7 +70,7 @@ python3 make_stls.py <svg> [thickness] [height] [cutout_depth] [fn] [flip] [spik
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `svg` | Input SVG file | required |
-| `thickness` | Outward border offset in mm | 2.0 |
+| `thickness` | Outward border offset in mm | 5.0 |
 | `height` | Total height of outer.stl in mm | 10.0 |
 | `cutout_depth` | Pocket depth / inner.stl height in mm | 3.0 |
 | `fn` | Round corner resolution | 64 |
